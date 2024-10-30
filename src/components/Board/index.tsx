@@ -11,16 +11,15 @@ export default function Board() {
       {board.map((row, rowIndex) => (
         <React.Fragment key={rowIndex}>
           {row.map((cell, cellIndex) => (
-            <Tile value={cell} rowIndex={rowIndex} cellIndex={cellIndex} />
+            <Tile
+              key={cellIndex}
+              value={cell}
+              rowIndex={rowIndex}
+              cellIndex={cellIndex}
+            />
           ))}
         </React.Fragment>
       ))}
-      {/* {board.flatMap((row, rowIndex) =>
-        row.map(
-          (tile, tileIndex) =>
-            tile && <Tile key={`${rowIndex}-${tileIndex}`} value={tile} />
-        )
-      )} */}
     </Container>
   );
 }
