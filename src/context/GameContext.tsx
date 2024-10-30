@@ -7,10 +7,10 @@ import {
   useRef,
 } from "react";
 import { useIsFirstRender } from "../hooks/useIsFirstRender";
-import { randomSearch } from "../heuristics/randomSearch";
-import { customHeuristic } from "../heuristics/customHeuristic";
-import { oneLevelSearch } from "../heuristics/oneLevelSearch";
-import { twoLevelSearch } from "../heuristics/twoLevelSearch";
+
+// import { customHeuristic } from "../heuristics/customHeuristic";
+// import { oneLevelSearch } from "../heuristics/oneLevelSearch";
+// import { twoLevelSearch } from "../heuristics/twoLevelSearch";
 
 export type Cell = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null;
 export type EightGameBoard = Cell[][];
@@ -19,7 +19,10 @@ export interface EigthGameContextData {
   checkCompleted: () => boolean;
   move: (rowIndex: number, cellIndex: number) => void;
   isShuffled: boolean;
-  shuffleBoard: (iterationQnt: number) => Promise<void>;
+  shuffleBoard: (
+    iterationQnt: number,
+    hasDelay?: boolean
+  ) => Promise<{ row: number; col: number }[] | undefined>;
   applyHeuristic: (
     type: "random" | "one-level" | "two-levels" | "custom"
   ) => void;
@@ -48,71 +51,25 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const [isShuffled, setIsShuffled] = useState(false);
   const isFirstRender = useIsFirstRender();
 
-  const checkCompleted = useCallback(() => {
-    return (
-      board[0][0] === 1 &&
-      board[0][1] === 2 &&
-      board[0][2] === 3 &&
-      board[1][0] === 4 &&
-      board[1][1] === 5 &&
-      board[1][2] === 6 &&
-      board[2][0] === 7 &&
-      board[2][1] === 8 &&
-      board[2][2] === null
-    );
-  }, [board]);
-
-  const isLoop = (row: number, col: number) => {
-    return moveHistory.current.some(
-      (prevMove) => prevMove.row === row && prevMove.col === col
-    );
-  };
-
-  const applyHeuristic = async (
-    type: "random" | "one-level" | "two-levels" | "custom"
-  ) => {
-    while (!checkCompleted()) {
-      let newBoard = board;
-
-      // Aplica a heurística e busca evitar loops
-      for (let i = 0; i < 50; i++) {
-        switch (type) {
-          case "random":
-            newBoard = randomSearch(board);
-            break;
-          case "one-level":
-            newBoard = oneLevelSearch(board);
-            break;
-          case "two-levels":
-            newBoard = twoLevelSearch(board);
-            break;
-          case "custom":
-            newBoard = customHeuristic(board);
-            break;
-        }
-
-        const emptyPosition = newBoard
-          .flatMap((row, i) =>
-            row.map((cell, j) => (cell === null ? { row: i, col: j } : null))
-          )
-          .find((pos) => pos !== null);
-
-        if (emptyPosition && !isLoop(emptyPosition.row, emptyPosition.col)) {
-          moveHistory.current.push(emptyPosition); // Adiciona posição atual ao histórico
-          if (moveHistory.current.length > 8) moveHistory.current.shift(); // Mantém histórico de 8 movimentos
-
-          moveCounts.current[type]++; // Incrementa contador de movimentos
-          setBoard(newBoard);
-          await new Promise((resolve) => setTimeout(resolve, 200)); // Intervalo para visualização dos movimentos
-          break;
-        }
-      }
+  const checkCompleted = (toCheckBoard: EightGameBoard = board) => {
+    if (
+      toCheckBoard[0][0] === 1 &&
+      toCheckBoard[0][1] === 2 &&
+      toCheckBoard[0][2] === 3 &&
+      toCheckBoard[1][0] === 4 &&
+      toCheckBoard[1][1] === 5 &&
+      toCheckBoard[1][2] === 6 &&
+      toCheckBoard[2][0] === 7 &&
+      toCheckBoard[2][1] === 8 &&
+      toCheckBoard[2][2] === null
+    ) {
+      setIsShuffled(false);
+      return true;
     }
-    getReport(); // Exibe o relatório ao final
+    return false;
   };
 
   const move = (rowIndex: number, cellIndex: number) => {
-    console.log("Movendo celula:", { rowIndex, cellIndex });
     setBoard((prev) => {
       const emptyPosition = prev
         .flatMap((row, i) =>
@@ -163,86 +120,159 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     return arr;
   };
 
-  const shuffleBoard = useCallback(
-    async (qtd: number) => {
-      setIsShuffled(true);
-      console.log("Embaralhando tabuleiro...");
-      // Gera a sequência de movimentos
-      function start() {
-        const tempBoard = board.map((row) => [...row]);
-        let empty = { row: 2, col: 2 };
-        let prevEmpty = null;
-        const currentMoveHistory = [];
+  const isLoop = (mod: number, piece: number[], print: boolean = false) => {
+    if (
+      moveHistory.current.length > mod - 1 &&
+      moveHistory.current[moveHistory.current.length - mod].row === piece[0] &&
+      moveHistory.current[moveHistory.current.length - mod].col === piece[1]
+    ) {
+      if (print) console.log("loop: " + mod);
+      return true;
+    } else {
+      return false;
+    }
+  };
 
-        for (let iteracoes = 0; iteracoes < qtd; iteracoes++) {
-          // Localiza a posição vazia
-          for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-              if (tempBoard[i][j] === null) {
-                empty = { row: i, col: j };
-              }
+  const shuffleBoard = async (
+    qtd: number,
+    hasDelay: boolean = true,
+    currentBoard?: EightGameBoard
+  ) => {
+    setIsShuffled(true);
+    const myBoard = currentBoard || board;
+    // Gera a sequência de movimentos
+    function start() {
+      const tempBoard = myBoard.map((row) => [...row]);
+      let empty = { row: 2, col: 2 };
+      let prevEmpty = null;
+      const currentMoveHistory = [];
+
+      for (let iteracoes = 0; iteracoes < qtd; iteracoes++) {
+        // Localiza a posição vazia
+        for (let i = 0; i < 3; i++) {
+          for (let j = 0; j < 3; j++) {
+            if (tempBoard[i][j] === null) {
+              empty = { row: i, col: j };
             }
           }
-
-          // Obtém as células adjacentes
-          const adj = getAdjecentCells(empty.row, empty.col);
-
-          // Seleciona uma célula adjacente que não seja a posição anterior (evita loop)
-          let random;
-          do {
-            random = Math.floor(Math.random() * adj.length);
-          } while (
-            prevEmpty &&
-            adj[random].row === prevEmpty.row &&
-            adj[random].col === prevEmpty.col
-          );
-
-          // Define a nova posição anterior
-          prevEmpty = { ...empty };
-
-          // Realiza a troca
-          const swapRow = adj[random].row;
-          const swapCol = adj[random].col;
-          [tempBoard[empty.row][empty.col], tempBoard[swapRow][swapCol]] = [
-            tempBoard[swapRow][swapCol],
-            tempBoard[empty.row][empty.col],
-          ];
-
-          // Adiciona o movimento à lista
-          currentMoveHistory.push({ row: swapRow, col: swapCol });
         }
 
-        return currentMoveHistory;
+        // Obtém as células adjacentes
+        const adj = getAdjecentCells(empty.row, empty.col);
+
+        // Seleciona uma célula adjacente que não seja a posição anterior (evita loop)
+        let random;
+        let attempts = 0;
+        do {
+          random = Math.floor(Math.random() * adj.length);
+          attempts++;
+        } while (
+          (prevEmpty &&
+            adj[random].row === prevEmpty.row &&
+            adj[random].col === prevEmpty.col) ||
+          (isLoop(2, [adj[random].row, adj[random].col]) && attempts < 10)
+        );
+
+        // Define a nova posição anterior
+        prevEmpty = { ...empty };
+
+        // Realiza a troca
+        const swapRow = adj[random].row;
+        const swapCol = adj[random].col;
+        [tempBoard[empty.row][empty.col], tempBoard[swapRow][swapCol]] = [
+          tempBoard[swapRow][swapCol],
+          tempBoard[empty.row][empty.col],
+        ];
+
+        // Adiciona o movimento à lista
+
+        currentMoveHistory.push({ row: swapRow, col: swapCol });
       }
 
-      // Função recursiva para aplicar movimentos com espera
-      const moves = start();
-      console.log("Movimentos gerados:", moves);
-      const applyMoveWithDelay = async (index = 0) => {
-        if (index >= moves.length) {
-          setIsShuffled(false);
-          moveHistory.current = [];
-          return;
-        }
+      return { currentMoveHistory, newBoard: tempBoard };
+    }
 
+    // Função recursiva para aplicar movimentos com espera
+    const { currentMoveHistory: moves, newBoard } = start();
+    // console.log("Movimentos gerados:", moves);
+    const applyMoveWithDelay = async (index = 0) => {
+      if (index >= moves.length) {
+        return;
+      }
+
+      if (hasDelay) {
         const { row, col } = moves[index];
         move(row, col); // Executa o movimento
-        await new Promise((resolve) => setTimeout(resolve, 500)); // Espera 500ms
+        console.log("entrou no deleaaay");
+        await new Promise((resolve) => setTimeout(resolve, 100)); // Espera 500ms
+      }
 
-        applyMoveWithDelay(index + 1); // Próximo movimento
-      };
+      applyMoveWithDelay(index + 1); // Próximo movimento
+      return moves;
+    };
 
-      applyMoveWithDelay();
-    },
-    [board, setBoard, move]
-  );
+    return hasDelay ? applyMoveWithDelay() : newBoard;
+  };
 
   useEffect(() => {
-    if (isFirstRender) return;
+    if (isFirstRender && !isShuffled) return;
     if (checkCompleted()) {
-      setTimeout(() => alert("You win"), 500);
+      setTimeout(() => console.log("tabuleiro completou"), 500);
     }
   }, [board, checkCompleted]);
+
+  const randomSearch = async (brd: EightGameBoard = board, i = 0) => {
+    const maxIterations = 1_500_000;
+    if (i === maxIterations) {
+      console.log("Max iterations reached");
+      return { i, brd };
+    }
+
+    const shuffledBoard = await shuffleBoard(1, false, brd);
+    const isCompleted = checkCompleted(shuffledBoard as EightGameBoard);
+    if (isCompleted) {
+      return { i, brd: shuffledBoard };
+    }
+    i++;
+    return randomSearch(shuffledBoard as EightGameBoard, i);
+  };
+
+  const applyHeuristic = async (
+    type: "random" | "one-level" | "two-levels" | "custom"
+  ) => {
+    console.log("Aplicando heuristica");
+    // let newBoard = board;
+    // let currentHistory: Array<{ row: number; col: number }> = [];
+
+    // Aplica a heurística e busca evitar loops
+
+    switch (type) {
+      case "random": {
+        console.log("Heuritica Aleatória");
+        const result = await randomSearch();
+        setBoard(result.brd as EightGameBoard);
+        break;
+      }
+      case "one-level":
+        // newBoard = oneLevelSearch(board);
+        break;
+      case "two-levels":
+        // newBoard = twoLevelSearch(board);
+        break;
+      case "custom":
+        // newBoard = customHeuristic(board);
+        break;
+      default:
+        throw new Error("Invalid heuristic type");
+    }
+    // console.log({ currentHistory, newBoard });
+
+    // for (const movePos of currentHistory) {
+    //   move(movePos.row, movePos.col); // Chama o método move para cada posição no histórico
+    //   // await new Promise((resolve) => setTimeout(resolve, 200)); // Intervalo para visualização dos movimentos
+    // }
+    getReport(); // Exibe o relatório ao final
+  };
 
   return (
     <GameContext.Provider
