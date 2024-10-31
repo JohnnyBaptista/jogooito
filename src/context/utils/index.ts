@@ -11,7 +11,7 @@ export const calculateGreedyDistance = (board: EightGameBoard): number => {
         // calcula a posição objetivo da célula no tabuleiro (posição X e Y)
         const targetX = Math.floor((cell - 1) / 3); // posição objetivo em X
         const targetY = (cell - 1) % 3; // posição objetivo em Y
-        // soma a distância de Manhattan da célula até sua posição objetivo
+        // soma a distância da célula até sua posição objetivo
         distance += Math.abs(i - targetX) + Math.abs(j - targetY);
       }
     });
@@ -42,8 +42,7 @@ export const calculateDistance = (board: EightGameBoard): number => {
   return distance;
 };
 
-// função para calcular a distância de Manhattan entre duas células específicas
-export const calculateManhattanDistance = (
+export const calculateDistanceBetweenCells = (
   x1: number,
   y1: number,
   x2: number,
@@ -53,10 +52,8 @@ export const calculateManhattanDistance = (
   return Math.abs(x1 - x2) + Math.abs(y1 - y2);
 };
 
-// função para calcular a distância total de Manhattan do tabuleiro para o estado objetivo
-export const calculateTotalManhattanDistance = (
-  board: EightGameBoard
-): number => {
+// função para calcular a distância total do tabuleiro para o estado objetivo
+export const calculateTotalDistance = (board: EightGameBoard): number => {
   let distance = 0;
 
   board.forEach((row, i) => {
@@ -65,8 +62,8 @@ export const calculateTotalManhattanDistance = (
         // Calcula a posição alvo da célula no tabuleiro objetivo
         const targetX = Math.floor((cell - 1) / board.length);
         const targetY = (cell - 1) % board.length;
-        // Soma a distância de Manhattan da célula até sua posição objetivo
-        distance += calculateManhattanDistance(i, j, targetX, targetY);
+        // Soma a distância  da célula até sua posição objetivo
+        distance += calculateDistanceBetweenCells(i, j, targetX, targetY);
       }
     });
   });

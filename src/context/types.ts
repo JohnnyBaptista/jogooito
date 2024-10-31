@@ -8,3 +8,34 @@ export interface BoardState {
   hCost: number;
   fCost: number;
 }
+export type Heuristics = "random" | "one-level" | "two-levels" | "custom";
+
+export interface EigthGameContextData {
+  board: EightGameBoard;
+  checkCompleted: () => boolean;
+  move: (rowIndex: number, cellIndex: number) => void;
+  isShuffled: boolean;
+  globalIterationsCount: number;
+  shuffleCount: number;
+  chosenHeuristic: Heuristics | null;
+  setChosenHeuristic: React.Dispatch<React.SetStateAction<Heuristics | null>>;
+  setShuffleCount: React.Dispatch<React.SetStateAction<number>>;
+  setGlobalIterationsCount: React.Dispatch<React.SetStateAction<number>>;
+  shuffleBoard: (
+    qtd: number,
+    hasDelay?: boolean,
+    currentBoard?: EightGameBoard
+  ) => Promise<
+    | Cell[][]
+    | {
+        row: number;
+        col: number;
+      }[]
+    | undefined
+  >;
+  applyHeuristic: (
+    type: "random" | "one-level" | "two-levels" | "custom"
+  ) => void;
+  currentMoveCount: number;
+  isResolving: boolean;
+}

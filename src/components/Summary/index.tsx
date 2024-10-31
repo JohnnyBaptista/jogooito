@@ -7,7 +7,7 @@ import {
   InfoValue,
 } from "./styles";
 import { useGameContext } from "../../context/useGame";
-import { Heuristics } from "../../context/GameContext";
+import { Heuristics } from "../../context/types";
 
 interface SummaryProps {
   title: string;
