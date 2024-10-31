@@ -9,31 +9,26 @@ import {
 } from "react";
 import { useIsFirstRender } from "../hooks/useIsFirstRender";
 import { calculateTotalManhattanDistance } from "../heuristics/utils"; // Função auxiliar para calcular distância de Manhattan
-
-const evaluateBoard = (board: EightGameBoard): number => {
-  return calculateTotalManhattanDistance(board);
-};
-
-type Position = { row: number; col: number };
-export type Cell = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null;
-export type EightGameBoard = Cell[][];
-interface BoardState {
-  board: EightGameBoard;
-  path: EightGameBoard[];
-  gCost: number; // custo do caminho atual
-  hCost: number; // custo estimado para o objetivo (heurística)
-  fCost: number; // custo total (gCost + hCost)
-}
+import { BoardState, Cell, EightGameBoard, Position } from "./types";
 
 export interface EigthGameContextData {
   board: EightGameBoard;
   checkCompleted: () => boolean;
   move: (rowIndex: number, cellIndex: number) => void;
   isShuffled: boolean;
+  setGlobalIterationsCount: React.Dispatch<React.SetStateAction<number>>;
   shuffleBoard: (
-    iterationQnt: number,
-    hasDelay?: boolean
-  ) => Promise<{ row: number; col: number }[] | undefined>;
+    qtd: number,
+    hasDelay?: boolean,
+    currentBoard?: EightGameBoard
+  ) => Promise<
+    | Cell[][]
+    | {
+        row: number;
+        col: number;
+      }[]
+    | undefined
+  >;
   applyHeuristic: (
     type: "random" | "one-level" | "two-levels" | "custom"
   ) => void;
@@ -53,12 +48,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const moveHistory = useRef<{ row: number; col: number }[]>([]);
   const [currentMoveCount, setCurrentMoveCount] = useState(0);
   const [globalIterationsCount, setGlobalIterationsCount] = useState(0);
-  const moveCounts = useRef<{ [key: string]: number }>({
-    random: 0,
-    "one-level": 0,
-    "two-levels": 0,
-    custom: 0,
-  });
 
   const [board, setBoard] = useState(DEFAULT_BOARD_POSITIONS);
   const [isShuffled, setIsShuffled] = useState(false);
@@ -201,7 +190,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
     // Função recursiva para aplicar movimentos com espera
     const { currentMoveHistory: moves, newBoard } = start();
-    // console.log("Movimentos gerados:", moves);
+
     const applyMoveWithDelay = async (index = 0) => {
       if (index >= moves.length) {
         return;
@@ -213,7 +202,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         await new Promise((resolve) => setTimeout(resolve, 100)); // Espera 500ms
       }
 
-      applyMoveWithDelay(index + 1); // Próximo movimento
+      applyMoveWithDelay(index + 1); // próximo movimento
       return moves;
     };
 
@@ -237,9 +226,9 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     while (queue.length > 0) {
       const { board, path } = queue.shift()!;
 
-      // Verifica se o estado atual é o estado objetivo
+      // verifica se o estado atual é o estado objetivo
       if (checkCompleted(board)) {
-        // Atualiza o estado do tabuleiro para o estado objetivo e retorna o número de movimentos
+        // atualiza o estado do tabuleiro para o estado objetivo e retorna o número de movimentos
         setBoard(board);
         console.log("Solução encontrada em", path.length - 1, "movimentos:");
         path.forEach((step, index) => {
@@ -249,7 +238,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         return path.length - 1;
       }
 
-      // Gera todos os filhos do estado atual e os adiciona na fila
+      // gera todos os filhos do estado atual e os adiciona na fila
       const children = generateChildren(board);
       for (const child of children) {
         const childKey = JSON.stringify(child);
@@ -264,7 +253,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     return -1;
   };
 
-  // Função para gerar filhos do estado atual
+  // gera filhos do estado atual
   const generateChildren = (board: EightGameBoard): EightGameBoard[] => {
     const children: EightGameBoard[] = [];
     const { row, col } = findEmptyPosition(board);
@@ -281,7 +270,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     return children;
   };
 
-  // Função para encontrar a posição da célula vazia no tabuleiro
+  // encontra a posição da célula vazia no tabuleiro
   const findEmptyPosition = (board: EightGameBoard): Position => {
     for (let row = 0; row < 3; row++) {
       for (let col = 0; col < 3; col++) {
@@ -292,6 +281,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     }
     throw new Error("Empty cell not found");
   };
+
   const aStarSearch = async (
     initialBoard: EightGameBoard
   ): Promise<EightGameBoard[] | null> => {
@@ -417,8 +407,52 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       currentBoard = nextMove;
       iterations++;
     }
-
+    setCurrentMoveCount(iterations);
     // Retorna o estado final e o número de iterações se o objetivo foi alcançado
+    return checkCompleted(currentBoard)
+      ? { board: currentBoard, iterations }
+      : null;
+  };
+
+  const calculateGreedyDistance = (board: EightGameBoard): number => {
+    let distance = 0;
+    board.forEach((row, i) => {
+      row.forEach((cell, j) => {
+        if (cell !== null) {
+          const targetX = Math.floor((cell - 1) / 3); // posição objetivo em X
+          const targetY = (cell - 1) % 3; // posição objetivo em Y
+          distance += Math.abs(i - targetX) + Math.abs(j - targetY);
+        }
+      });
+    });
+    return distance;
+  };
+
+  const greedyManhattanSearch = async (
+    board: EightGameBoard,
+    maxIterations: number = 1_000_000
+  ): Promise<{ board: EightGameBoard; iterations: number } | null> => {
+    let currentBoard = board;
+    let iterations = 0;
+
+    while (!checkCompleted(currentBoard) && iterations < maxIterations) {
+      const possibleMoves = generateMoves(currentBoard);
+
+      let bestMove = possibleMoves[0];
+      let minDistance = calculateGreedyDistance(bestMove);
+
+      possibleMoves.forEach((move) => {
+        const distance = calculateGreedyDistance(move);
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestMove = move;
+        }
+      });
+
+      currentBoard = bestMove;
+      iterations++;
+    }
+    setCurrentMoveCount(iterations);
     return checkCompleted(currentBoard)
       ? { board: currentBoard, iterations }
       : null;
@@ -470,20 +504,27 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         }
         break;
       }
-      case "custom":
+      case "custom": {
         console.log("Heurística de Busca em Largura");
-
+        const result = await greedyManhattanSearch(board);
+        if (result) {
+          setBoard(result.board);
+          console.log(
+            "Solução encontrada em",
+            result.iterations,
+            "iteração(ões)."
+          );
+        } else {
+          console.log("Solução não encontrada dentro do limite de iterações.");
+        }
         break;
+      }
+
       default:
         throw new Error("Invalid heuristic type");
     }
-    // console.log({ currentHistory, newBoard });
 
-    // for (const movePos of currentHistory) {
-    //   move(movePos.row, movePos.col); // Chama o método move para cada posição no histórico
-    //   // await new Promise((resolve) => setTimeout(resolve, 200)); // Intervalo para visualização dos movimentos
-    // }
-    getReport(); // Exibe o relatório ao final
+    getReport();
   };
 
   return (
@@ -491,9 +532,10 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       value={{
         board,
         checkCompleted,
-        move, // Implementar se necessário
+        move,
         isShuffled,
         shuffleBoard,
+        setGlobalIterationsCount,
         applyHeuristic,
       }}
     >
