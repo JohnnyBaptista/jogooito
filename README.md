@@ -1,50 +1,35 @@
-# React + TypeScript + Vite
+# Projeto Resolver Quebra-Cabeça de 8 Peças
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Este projeto implementa uma solução para o jogo do quebra-cabeça de 8 peças, um problema clássico de rearranjo de peças numeradas em um tabuleiro. O programa permite que os usuários embaralhem o tabuleiro, escolham várias heurísticas de busca e tentem resolver o quebra-cabeça encontrando a sequência de movimentos necessária para chegar à solução final.
 
-Currently, two official plugins are available:
+> ### Acesse ao trabalho pelo site [clicando aqui](https://jogooito.vercel.app)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Requisitos do Projeto
 
-## Expanding the ESLint configuration
+### 1. Configuração Inicial
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+O tabuleiro começa no estado resolvido, com as peças organizadas na ordem correta. O usuário define um número de movimentos aleatórios para embaralhar o tabuleiro.
 
-- Configure the top-level `parserOptions` property like this:
+### 2. Técnicas de Busca e Heurísticas
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+O projeto implementa várias técnicas de busca para resolver o quebra-cabeça embaralhado:
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+- **Busca Aleatória**: Aplica movimentos aleatórios para resolver o quebra-cabeça, fornecendo um caminho de solução imprevisível.
+- **Heurística de Um Nível (Busca em largura)**: Usa uma heurística que avalia possíveis movimentos em um único nível para guiar o quebra-cabeça em direção à solução.
+- **Heurística de Dois Níveis (Busca A\*)**: Implementa o algoritmo A\*, analisando dois níveis de movimentos para determinar o caminho mais curto até a solução.
+- **Heurística Personalizada (Busca Gulosa)**: Aplica uma heurística personalizada baseada na distância mínima do estado objetivo, otimizando os movimentos para reduzir o número de passos até a solução.
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+### 3. Registro de Desempenho
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+O código registra o número total de movimentos e iterações necessárias para cada heurística resolver o quebra-cabeça, ajudando a avaliar a eficiência de cada abordagem.
+
+### 4. Prevenção de Loops
+
+Para evitar loops infinitos, o programa acompanha os últimos movimentos, garantindo que movimentos repetidos não revertam o quebra-cabeça para estados anteriores.
+
+## Componentes Principais
+
+- **GameContext**: Gerencia o estado do jogo, incluindo o tabuleiro, contagem de movimentos, iterações globais e aplicação das heurísticas.
+- **Funções de Heurísticas**: Implementam as diferentes abordagens de busca, como Busca Aleatória, Busca A\* e Busca Gulosa.
+
+Este README fornece uma visão geral das funcionalidades e requisitos do projeto para o jogo dos 8 quadradinhos.
