@@ -49,7 +49,7 @@ const Summary: React.FC<SummaryProps> = ({ title }) => {
           <InfoLabel>Heuristica escolhida: </InfoLabel>
           <InfoValue>
             {chosenHeuristic
-              ? heuristicLabelMap[chosenHeuristic]
+              ? heuristicLabelMap[chosenHeuristic as Heuristics]
               : "Nenhuma heuristica escolhida"}{" "}
           </InfoValue>
         </div>
