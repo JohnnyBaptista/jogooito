@@ -8,14 +8,24 @@ import {
   useRef,
 } from "react";
 import { useIsFirstRender } from "../hooks/useIsFirstRender";
-import { calculateTotalManhattanDistance } from "./utils"; // Função auxiliar para calcular distância de Manhattan
+import {
+  calculateGreedyDistance,
+  calculateTotalManhattanDistance,
+} from "./utils"; // Função auxiliar para calcular distância de Manhattan
 import { BoardState, Cell, EightGameBoard, Position } from "./types";
+
+export type Heuristics = "random" | "one-level" | "two-levels" | "custom";
 
 export interface EigthGameContextData {
   board: EightGameBoard;
   checkCompleted: () => boolean;
   move: (rowIndex: number, cellIndex: number) => void;
   isShuffled: boolean;
+  globalIterationsCount: number;
+  shuffleCount: number;
+  chosenHeuristic: Heuristics | null;
+  setChosenHeuristic: React.Dispatch<React.SetStateAction<Heuristics | null>>;
+  setShuffleCount: React.Dispatch<React.SetStateAction<number>>;
   setGlobalIterationsCount: React.Dispatch<React.SetStateAction<number>>;
   shuffleBoard: (
     qtd: number,
@@ -32,6 +42,8 @@ export interface EigthGameContextData {
   applyHeuristic: (
     type: "random" | "one-level" | "two-levels" | "custom"
   ) => void;
+  currentMoveCount: number;
+  isResolving: boolean;
 }
 
 export const GameContext = createContext<EigthGameContextData | undefined>(
@@ -47,10 +59,15 @@ const DEFAULT_BOARD_POSITIONS: EightGameBoard = [
 export const GameProvider = ({ children }: { children: ReactNode }) => {
   const moveHistory = useRef<{ row: number; col: number }[]>([]);
   const [currentMoveCount, setCurrentMoveCount] = useState(0);
-  const [globalIterationsCount, setGlobalIterationsCount] = useState(0);
+  const [globalIterationsCount, setGlobalIterationsCount] = useState(500_000);
+  const [chosenHeuristic, setChosenHeuristic] = useState<Heuristics | null>(
+    null
+  );
+  const [isResolving, setIsResolving] = useState(false);
 
   const [board, setBoard] = useState(DEFAULT_BOARD_POSITIONS);
   const [isShuffled, setIsShuffled] = useState(false);
+  const [shuffleCount, setShuffleCount] = useState(20);
   const isFirstRender = useIsFirstRender();
 
   const checkCompleted = (toCheckBoard: EightGameBoard = board) => {
@@ -209,27 +226,33 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     return hasDelay ? applyMoveWithDelay() : newBoard;
   };
 
-  useEffect(() => {
-    if (isFirstRender && !isShuffled) return;
-    if (checkCompleted()) {
-      setTimeout(() => console.log("tabuleiro completou"), 500);
-    }
-  }, [board, checkCompleted]);
+  // useEffect(() => {
+  //   if (isFirstRender && !isShuffled) return;
+  //   if (checkCompleted()) {
+  //     setIsShuffled(false);
+  //     setTimeout(() => console.log("tabuleiro completou"), 500);
+  //   }
+  // }, [board, checkCompleted]);
 
-  const breadthFirstSearch = async (initialBoard: EightGameBoard) => {
+  const breadthFirstSearch = async (
+    initialBoard: EightGameBoard,
+    maxIterations: number = 500_000
+  ) => {
     const queue: { board: EightGameBoard; path: EightGameBoard[] }[] = [
       { board: initialBoard, path: [initialBoard] },
     ];
+    let iterations = 0;
     const visited = new Set<string>();
     visited.add(JSON.stringify(initialBoard));
 
-    while (queue.length > 0) {
+    while (queue.length > 0 && iterations < maxIterations) {
       const { board, path } = queue.shift()!;
-
       // verifica se o estado atual é o estado objetivo
       if (checkCompleted(board)) {
         // atualiza o estado do tabuleiro para o estado objetivo e retorna o número de movimentos
+        setCurrentMoveCount(iterations);
         setBoard(board);
+
         console.log("Solução encontrada em", path.length - 1, "movimentos:");
         path.forEach((step, index) => {
           console.log(`Passo ${index}:`);
@@ -247,6 +270,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
           queue.push({ board: child, path: [...path, child] });
         }
       }
+      iterations++;
     }
 
     console.log("Nenhuma solução encontrada.");
@@ -283,10 +307,12 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const aStarSearch = async (
-    initialBoard: EightGameBoard
+    initialBoard: EightGameBoard,
+    maxIterations: number = 1_000_000
   ): Promise<EightGameBoard[] | null> => {
     const openList: BoardState[] = [];
     const closedSet = new Set<string>();
+    let iterations = 0;
 
     // Inicializa o estado inicial
     openList.push({
@@ -297,13 +323,14 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       fCost: calculateTotalManhattanDistance(initialBoard),
     });
 
-    while (openList.length > 0) {
+    while (openList.length > 0 && iterations < maxIterations) {
       // Ordena a lista aberta pelo menor fCost
       openList.sort((a, b) => a.fCost - b.fCost);
       const currentState = openList.shift()!;
 
       // Verifica se o estado atual é o estado objetivo
       if (checkCompleted(currentState.board)) {
+        setCurrentMoveCount(iterations);
         return currentState.path; // Caminho para a solução encontrado
       }
 
@@ -331,6 +358,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
           fCost,
         });
       }
+
+      iterations++;
     }
 
     return null; // Nenhuma solução encontrada
@@ -414,20 +443,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       : null;
   };
 
-  const calculateGreedyDistance = (board: EightGameBoard): number => {
-    let distance = 0;
-    board.forEach((row, i) => {
-      row.forEach((cell, j) => {
-        if (cell !== null) {
-          const targetX = Math.floor((cell - 1) / 3); // posição objetivo em X
-          const targetY = (cell - 1) % 3; // posição objetivo em Y
-          distance += Math.abs(i - targetX) + Math.abs(j - targetY);
-        }
-      });
-    });
-    return distance;
-  };
-
   const greedyManhattanSearch = async (
     board: EightGameBoard,
     maxIterations: number = 1_000_000
@@ -461,6 +476,8 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const applyHeuristic = async (
     type: "random" | "one-level" | "two-levels" | "custom"
   ) => {
+    setIsResolving(true);
+    setChosenHeuristic(type);
     setCurrentMoveCount(0);
     const heuristicLabelMap: Record<typeof type, string> = {
       random: "Heurística aleatória",
@@ -473,7 +490,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     switch (type) {
       case "random": {
         console.log("Heurística de Busca Aleatória");
-        const result = await randomSearch(board, 1_000_000);
+        const result = await randomSearch(board, globalIterationsCount);
         if (result) {
           setBoard(result.board);
           console.log(
@@ -494,7 +511,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
       case "two-levels": {
         console.log("Heurística A* para resolver o tabuleiro");
-        const path = await aStarSearch(board);
+        const path = await aStarSearch(board, globalIterationsCount);
         if (path) {
           for (const state of path) {
             setBoard(state); // Atualiza o tabuleiro para cada movimento
@@ -507,7 +524,10 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       }
       case "custom": {
         console.log("Heurística de Busca em Largura");
-        const result = await greedyManhattanSearch(board);
+        const result = await greedyManhattanSearch(
+          board,
+          globalIterationsCount
+        );
         if (result) {
           setBoard(result.board);
           console.log(
@@ -524,7 +544,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       default:
         throw new Error("Invalid heuristic type");
     }
-
+    setIsResolving(false);
     getReport();
   };
 
@@ -532,12 +552,19 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     <GameContext.Provider
       value={{
         board,
+        chosenHeuristic,
+        setChosenHeuristic,
         checkCompleted,
+        setShuffleCount,
+        shuffleCount,
         move,
+        globalIterationsCount,
         isShuffled,
         shuffleBoard,
         setGlobalIterationsCount,
         applyHeuristic,
+        currentMoveCount,
+        isResolving,
       }}
     >
       {children}

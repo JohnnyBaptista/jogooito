@@ -8,5 +8,5 @@ export const Container = styled.div`
   height: 350px;
   border: 1px solid #797878;
   border-radius: 10px;
-  margin: 0 auto;
+  margin: 0;
 `;
