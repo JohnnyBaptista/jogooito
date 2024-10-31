@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 import {
   createContext,
   useState,
@@ -7,11 +8,12 @@ import {
   useRef,
 } from "react";
 import { useIsFirstRender } from "../hooks/useIsFirstRender";
+import {
+  calculateDistance,
+  calculateTotalManhattanDistance,
+} from "../heuristics/utils"; // Função auxiliar para calcular distância de Manhattan
 
-// import { customHeuristic } from "../heuristics/customHeuristic";
-// import { oneLevelSearch } from "../heuristics/oneLevelSearch";
-// import { twoLevelSearch } from "../heuristics/twoLevelSearch";
-
+type Position = { row: number; col: number };
 export type Cell = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null;
 export type EightGameBoard = Cell[][];
 export interface EigthGameContextData {
@@ -40,6 +42,9 @@ const DEFAULT_BOARD_POSITIONS: EightGameBoard = [
 
 export const GameProvider = ({ children }: { children: ReactNode }) => {
   const moveHistory = useRef<{ row: number; col: number }[]>([]);
+  const [moveHistory2, setMoveHistory2] = useState<
+    { row: number; col: number }[]
+  >([]);
   const moveCounts = useRef<{ [key: string]: number }>({
     random: 0,
     "one-level": 0,
@@ -118,19 +123,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     if (j + 1 <= 2) arr.push({ row: i, col: j + 1 }); // Right
     if (i + 1 <= 2) arr.push({ row: i + 1, col: j }); // Down
     return arr;
-  };
-
-  const isLoop = (mod: number, piece: number[], print: boolean = false) => {
-    if (
-      moveHistory.current.length > mod - 1 &&
-      moveHistory.current[moveHistory.current.length - mod].row === piece[0] &&
-      moveHistory.current[moveHistory.current.length - mod].col === piece[1]
-    ) {
-      if (print) console.log("loop: " + mod);
-      return true;
-    } else {
-      return false;
-    }
   };
 
   const shuffleBoard = async (
@@ -237,6 +229,72 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     return randomSearch(shuffledBoard as EightGameBoard, i);
   };
 
+  const breadthFirstSearch = async (initialBoard: EightGameBoard) => {
+    const queue: { board: EightGameBoard; path: EightGameBoard[] }[] = [
+      { board: initialBoard, path: [initialBoard] },
+    ];
+    const visited = new Set<string>();
+    visited.add(JSON.stringify(initialBoard));
+
+    while (queue.length > 0) {
+      const { board, path } = queue.shift()!;
+
+      // Verifica se o estado atual é o estado objetivo
+      if (checkCompleted(board)) {
+        // Atualiza o estado do tabuleiro para o estado objetivo e retorna o número de movimentos
+        setBoard(board);
+        console.log("Solução encontrada em", path.length - 1, "movimentos:");
+        path.forEach((step, index) => {
+          console.log(`Passo ${index}:`);
+          console.log(step.map((row) => row.join(" ")).join("\n"), "\n");
+        });
+        return path.length - 1;
+      }
+
+      // Gera todos os filhos do estado atual e os adiciona na fila
+      const children = generateChildren(board);
+      for (const child of children) {
+        const childKey = JSON.stringify(child);
+        if (!visited.has(childKey)) {
+          visited.add(childKey);
+          queue.push({ board: child, path: [...path, child] });
+        }
+      }
+    }
+
+    console.log("Nenhuma solução encontrada.");
+    return -1;
+  };
+
+  // Função para gerar filhos do estado atual
+  const generateChildren = (board: EightGameBoard): EightGameBoard[] => {
+    const children: EightGameBoard[] = [];
+    const { row, col } = findEmptyPosition(board);
+    const moves = getAdjecentCells(row, col); // Usa a função getAdjecentCells
+
+    for (const { row: moveRow, col: moveCol } of moves) {
+      const newBoard = board.map((r) => [...r]);
+      [newBoard[row][col], newBoard[moveRow][moveCol]] = [
+        newBoard[moveRow][moveCol],
+        newBoard[row][col],
+      ];
+      children.push(newBoard);
+    }
+    return children;
+  };
+
+  // Função para encontrar a posição da célula vazia no tabuleiro
+  const findEmptyPosition = (board: EightGameBoard): Position => {
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        if (board[row][col] === null) {
+          return { row, col };
+        }
+      }
+    }
+    throw new Error("Empty cell not found");
+  };
+
   const applyHeuristic = async (
     type: "random" | "one-level" | "two-levels" | "custom"
   ) => {
@@ -253,14 +311,20 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         setBoard(result.brd as EightGameBoard);
         break;
       }
-      case "one-level":
-        // newBoard = oneLevelSearch(board);
+      case "one-level": {
+        console.log("Heuritica de um nível");
+        // await startLevelSearch(board);
+        console.log({ moveHistory2 });
         break;
+      }
+
       case "two-levels":
-        // newBoard = twoLevelSearch(board);
+        console.log("Heurística de dois níveis");
+        // await secondLevelHeuristics(board);
         break;
       case "custom":
-        // newBoard = customHeuristic(board);
+        console.log("Heurística de Busca em Largura");
+        await breadthFirstSearch(board);
         break;
       default:
         throw new Error("Invalid heuristic type");
