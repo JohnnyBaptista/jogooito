@@ -8,14 +8,23 @@ import {
   useRef,
 } from "react";
 import { useIsFirstRender } from "../hooks/useIsFirstRender";
-import {
-  calculateDistance,
-  calculateTotalManhattanDistance,
-} from "../heuristics/utils"; // Função auxiliar para calcular distância de Manhattan
+import { calculateTotalManhattanDistance } from "../heuristics/utils"; // Função auxiliar para calcular distância de Manhattan
+
+const evaluateBoard = (board: EightGameBoard): number => {
+  return calculateTotalManhattanDistance(board);
+};
 
 type Position = { row: number; col: number };
 export type Cell = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null;
 export type EightGameBoard = Cell[][];
+interface BoardState {
+  board: EightGameBoard;
+  path: EightGameBoard[];
+  gCost: number; // custo do caminho atual
+  hCost: number; // custo estimado para o objetivo (heurística)
+  fCost: number; // custo total (gCost + hCost)
+}
+
 export interface EigthGameContextData {
   board: EightGameBoard;
   checkCompleted: () => boolean;
@@ -42,9 +51,8 @@ const DEFAULT_BOARD_POSITIONS: EightGameBoard = [
 
 export const GameProvider = ({ children }: { children: ReactNode }) => {
   const moveHistory = useRef<{ row: number; col: number }[]>([]);
-  const [moveHistory2, setMoveHistory2] = useState<
-    { row: number; col: number }[]
-  >([]);
+  const [currentMoveCount, setCurrentMoveCount] = useState(0);
+  const [globalIterationsCount, setGlobalIterationsCount] = useState(0);
   const moveCounts = useRef<{ [key: string]: number }>({
     random: 0,
     "one-level": 0,
@@ -106,15 +114,15 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  const getReport = useCallback(() => {
-    console.log("Movimentos necessários para resolver o tabuleiro:");
-    console.log(`Heurística aleatória: ${moveCounts.current["random"]}`);
-    console.log(`Heurística de um nível: ${moveCounts.current["one-level"]}`);
-    console.log(
-      `Heurística de dois níveis: ${moveCounts.current["two-levels"]}`
-    );
-    console.log(`Heurística personalizada: ${moveCounts.current["custom"]}`);
-  }, []);
+  const getReport = useCallback(
+    (heuristic?: string) => {
+      console.log(`Relatório - Heuristica ${heuristic}:`);
+      console.log("Total de movimentos:", currentMoveCount);
+      console.log("Total de iterações:", globalIterationsCount);
+      console.log("Movimentos por heurística:");
+    },
+    [currentMoveCount, globalIterationsCount]
+  );
 
   const getAdjecentCells = (i: number, j: number) => {
     const arr = [];
@@ -123,6 +131,15 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     if (j + 1 <= 2) arr.push({ row: i, col: j + 1 }); // Right
     if (i + 1 <= 2) arr.push({ row: i + 1, col: j }); // Down
     return arr;
+  };
+
+  const isLoop = (n: number, arr: number[]) => {
+    const lastN = arr.slice(-n);
+    return arr
+      .slice(0, -n)
+      .some(
+        (e, i) => e === lastN[0] && lastN.every((ee, j) => ee === arr[i + j])
+      );
   };
 
   const shuffleBoard = async (
@@ -176,8 +193,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
           tempBoard[empty.row][empty.col],
         ];
 
-        // Adiciona o movimento à lista
-
         currentMoveHistory.push({ row: swapRow, col: swapCol });
       }
 
@@ -195,7 +210,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       if (hasDelay) {
         const { row, col } = moves[index];
         move(row, col); // Executa o movimento
-        console.log("entrou no deleaaay");
         await new Promise((resolve) => setTimeout(resolve, 100)); // Espera 500ms
       }
 
@@ -212,22 +226,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       setTimeout(() => console.log("tabuleiro completou"), 500);
     }
   }, [board, checkCompleted]);
-
-  const randomSearch = async (brd: EightGameBoard = board, i = 0) => {
-    const maxIterations = 1_500_000;
-    if (i === maxIterations) {
-      console.log("Max iterations reached");
-      return { i, brd };
-    }
-
-    const shuffledBoard = await shuffleBoard(1, false, brd);
-    const isCompleted = checkCompleted(shuffledBoard as EightGameBoard);
-    if (isCompleted) {
-      return { i, brd: shuffledBoard };
-    }
-    i++;
-    return randomSearch(shuffledBoard as EightGameBoard, i);
-  };
 
   const breadthFirstSearch = async (initialBoard: EightGameBoard) => {
     const queue: { board: EightGameBoard; path: EightGameBoard[] }[] = [
@@ -294,37 +292,187 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     }
     throw new Error("Empty cell not found");
   };
+  const aStarSearch = async (
+    initialBoard: EightGameBoard
+  ): Promise<EightGameBoard[] | null> => {
+    const openList: BoardState[] = [];
+    const closedSet = new Set<string>();
+
+    // Inicializa o estado inicial
+    openList.push({
+      board: initialBoard,
+      path: [initialBoard],
+      gCost: 0,
+      hCost: calculateTotalManhattanDistance(initialBoard),
+      fCost: calculateTotalManhattanDistance(initialBoard),
+    });
+
+    while (openList.length > 0) {
+      // Ordena a lista aberta pelo menor fCost
+      openList.sort((a, b) => a.fCost - b.fCost);
+      const currentState = openList.shift()!;
+
+      // Verifica se o estado atual é o estado objetivo
+      if (checkCompleted(currentState.board)) {
+        return currentState.path; // Caminho para a solução encontrado
+      }
+
+      // Adiciona o estado atual ao conjunto fechado
+      closedSet.add(JSON.stringify(currentState.board));
+
+      // Gera filhos (movimentos possíveis)
+      const children = generateMoves(currentState.board);
+
+      for (const child of children) {
+        const childKey = JSON.stringify(child);
+        if (closedSet.has(childKey)) continue; // Ignora estados já visitados
+
+        // Calcula o custo do caminho (gCost) e o custo estimado (hCost)
+        const gCost = currentState.gCost + 1;
+        const hCost = calculateTotalManhattanDistance(child);
+        const fCost = gCost + hCost;
+
+        // Adiciona o filho à lista aberta com seu estado atualizado
+        openList.push({
+          board: child,
+          path: [...currentState.path, child],
+          gCost,
+          hCost,
+          fCost,
+        });
+      }
+    }
+
+    return null; // Nenhuma solução encontrada
+  };
+
+  const generateMoves = (board: EightGameBoard): EightGameBoard[] => {
+    const possibleMoves: EightGameBoard[] = [];
+
+    let emptyX = -1;
+    let emptyY = -1;
+
+    board.forEach((row, i) => {
+      row.forEach((cell, j) => {
+        if (cell === null) {
+          emptyX = i;
+          emptyY = j;
+        }
+      });
+    });
+
+    // Movimentos possíveis: cima, baixo, esquerda, direita
+    const moves = [
+      { x: -1, y: 0 },
+      { x: 1, y: 0 },
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+    ];
+
+    moves.forEach((move) => {
+      const newX = emptyX + move.x;
+      const newY = emptyY + move.y;
+
+      if (
+        newX >= 0 &&
+        newX < board.length &&
+        newY >= 0 &&
+        newY < board.length
+      ) {
+        const newBoard = board.map((row) => row.slice());
+        [newBoard[emptyX][emptyY], newBoard[newX][newY]] = [
+          newBoard[newX][newY],
+          newBoard[emptyX][emptyY],
+        ];
+        possibleMoves.push(newBoard);
+      }
+    });
+
+    return possibleMoves;
+  };
+
+  const randomSearch = async (
+    board: EightGameBoard,
+    maxIterations: number = 10000
+  ): Promise<{ board: EightGameBoard; iterations: number } | null> => {
+    let currentBoard = board;
+    const visitedStates = new Set<string>();
+    let iterations = 0;
+
+    while (!checkCompleted(currentBoard) && iterations < maxIterations) {
+      // Adiciona o estado atual aos visitados
+      visitedStates.add(JSON.stringify(currentBoard));
+
+      // Gera movimentos aleatórios e evita ciclos
+      const possibleMoves = generateMoves(currentBoard);
+      const unvisitedMoves = possibleMoves.filter(
+        (move) => !visitedStates.has(JSON.stringify(move))
+      );
+
+      const nextMove =
+        unvisitedMoves.length > 0
+          ? unvisitedMoves[Math.floor(Math.random() * unvisitedMoves.length)]
+          : possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+
+      currentBoard = nextMove;
+      iterations++;
+    }
+
+    // Retorna o estado final e o número de iterações se o objetivo foi alcançado
+    return checkCompleted(currentBoard)
+      ? { board: currentBoard, iterations }
+      : null;
+  };
 
   const applyHeuristic = async (
     type: "random" | "one-level" | "two-levels" | "custom"
   ) => {
-    console.log("Aplicando heuristica");
-    // let newBoard = board;
-    // let currentHistory: Array<{ row: number; col: number }> = [];
-
-    // Aplica a heurística e busca evitar loops
+    const heuristicLabelMap: Record<typeof type, string> = {
+      random: "Heurística aleatória",
+      "one-level": "Heurística de um nível",
+      "two-levels": "Heurística de dois níveis",
+      custom: "Heurística personalizada",
+    };
+    console.log("Escolhendo heuriística:", heuristicLabelMap[type]);
 
     switch (type) {
       case "random": {
-        console.log("Heuritica Aleatória");
-        const result = await randomSearch();
-        setBoard(result.brd as EightGameBoard);
+        console.log("Heurística de Busca Aleatória");
+        const result = await randomSearch(board, 1_000_000);
+        if (result) {
+          setBoard(result.board);
+          console.log(
+            "Solução encontrada em",
+            result.iterations,
+            "iteração(ões)."
+          );
+        } else {
+          console.log("Solução não encontrada dentro do limite de iterações.");
+        }
         break;
       }
       case "one-level": {
         console.log("Heuritica de um nível");
-        // await startLevelSearch(board);
-        console.log({ moveHistory2 });
+        await breadthFirstSearch(board);
         break;
       }
 
-      case "two-levels":
-        console.log("Heurística de dois níveis");
-        // await secondLevelHeuristics(board);
+      case "two-levels": {
+        console.log("Heurística A* para resolver o tabuleiro");
+        const path = await aStarSearch(board);
+        if (path) {
+          for (const state of path) {
+            setBoard(state); // Atualiza o tabuleiro para cada movimento
+            await new Promise((resolve) => setTimeout(resolve, 100)); // Animação opcional
+          }
+        } else {
+          console.log("Solução não encontrada.");
+        }
         break;
+      }
       case "custom":
         console.log("Heurística de Busca em Largura");
-        await breadthFirstSearch(board);
+
         break;
       default:
         throw new Error("Invalid heuristic type");
