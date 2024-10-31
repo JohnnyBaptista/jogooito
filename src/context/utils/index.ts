@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 // heuristics/utils.ts
-import { EightGameBoard } from "../../context/GameContext";
+
+import { EightGameBoard } from "../types";
 
 export const calculateDistance = (board: EightGameBoard): number => {
   let distance = 0;
@@ -24,7 +25,7 @@ export const calculateDistance = (board: EightGameBoard): number => {
 };
 
 // Calcula a distância de Manhattan para uma célula específica
-const calculateManhattanDistance = (
+export const calculateManhattanDistance = (
   x1: number,
   y1: number,
   x2: number,

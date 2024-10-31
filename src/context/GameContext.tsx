@@ -8,7 +8,7 @@ import {
   useRef,
 } from "react";
 import { useIsFirstRender } from "../hooks/useIsFirstRender";
-import { calculateTotalManhattanDistance } from "../heuristics/utils"; // Função auxiliar para calcular distância de Manhattan
+import { calculateTotalManhattanDistance } from "./utils"; // Função auxiliar para calcular distância de Manhattan
 import { BoardState, Cell, EightGameBoard, Position } from "./types";
 
 export interface EigthGameContextData {
@@ -461,6 +461,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
   const applyHeuristic = async (
     type: "random" | "one-level" | "two-levels" | "custom"
   ) => {
+    setCurrentMoveCount(0);
     const heuristicLabelMap: Record<typeof type, string> = {
       random: "Heurística aleatória",
       "one-level": "Heurística de um nível",
