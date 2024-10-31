@@ -16,6 +16,7 @@ const BoardHeuristicController: React.FC = () => {
     shuffleCount,
     setShuffleCount,
     applyHeuristic,
+    setGlobalIterationsCount,
   } = useGameContext();
   const handleSuffle = async (qnt: number) => {
     await shuffleBoard(qnt);
@@ -63,6 +64,7 @@ const BoardHeuristicController: React.FC = () => {
           <InfoLabel>Max. de Iterações:</InfoLabel>
           <CustomInputComponent
             type="number"
+            onChange={(e) => setGlobalIterationsCount(Number(e.target.value))}
             defaultValue={globalIterationsCount}
             placeholder="Enter max iterations for heuristics"
           />
